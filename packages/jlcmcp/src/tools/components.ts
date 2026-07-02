@@ -76,4 +76,11 @@ export function registerComponentTools(server: any, bridge: BridgeClient) {
     const data = await bridge.command('create_pcb_component', params);
     return { content: [{ type: 'text' as const, text: JSON.stringify(data ?? { success: true }, null, 2) }] };
   });
+
+  server.tool('pcb_get_component_bbox', '获取元件边界框（BBox），返回 minX/minY/maxX/maxY/width/height/centerX/centerY，用于精确布局和避免重叠', {
+    designator: z.string().describe('元件位号，如 U1, R1'),
+  }, async ({ designator }: { designator: string }) => {
+    const data = await bridge.command('get_component_bbox', { designator });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
 }

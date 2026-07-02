@@ -1247,6 +1247,51 @@ async function moveComponent(params: { designator: string; x: number; y: number;
     rotation: params.rotation ?? targetRow?.getState_Rotation?.() ?? 0,
   };
 }
+async function getComponentBBox(params: { designator: string }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitiveComponent?.getAll) {
+    throw new Error('current EDA does not support component getAll');
+  }
+  if (!api?.pcb_Primitive?.getPrimitivesBBox) {
+    throw new Error('current EDA does not support getPrimitivesBBox');
+  }
+
+  const rows = await api.pcb_PrimitiveComponent.getAll();
+  let targetId: string | null = null;
+
+  for (const row of rows) {
+    const designator = row?.getState_Designator?.() || '';
+    if (designator === params.designator) {
+      targetId = row?.getState_PrimitiveId?.() || null;
+      break;
+    }
+  }
+
+  if (!targetId) throw new Error(`component not found: ${params.designator}`);
+
+  const bbox = await api.pcb_Primitive.getPrimitivesBBox([targetId]);
+  if (!bbox) {
+    throw new Error(`BBox not available for: ${params.designator}`);
+  }
+
+  const minX = Number((bbox as any).minX);
+  const minY = Number((bbox as any).minY);
+  const maxX = Number((bbox as any).maxX);
+  const maxY = Number((bbox as any).maxY);
+
+  return {
+    designator: params.designator,
+    primitiveId: targetId,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  };
+}
 
 function parsePrimitiveIds(params: any): string | string[] {
   if (Array.isArray(params?.primitiveIds)) {
@@ -2651,6 +2696,9 @@ async function executeCommand(cmd: BridgeCommand): Promise<BridgeResult> {
         break;
       case 'pcb_export_pickplace':
         data = await pcbExportPickPlace(cmd.params);
+        break;
+      case 'get_component_bbox':
+        data = await getComponentBBox(cmd.params);
         break;
       default:
         throw new Error(`unknown action: ${cmd.action}`);
