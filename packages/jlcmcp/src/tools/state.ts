@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 import { BridgeClient } from '../bridge-client.js';
 
 export function registerStateTools(server: any, bridge: BridgeClient) {
@@ -7,12 +9,19 @@ export function registerStateTools(server: any, bridge: BridgeClient) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 
-  server.tool('pcb_screenshot', '截取当前 PCB 编辑器截图', {}, async () => {
+  server.tool('pcb_screenshot', '截取当前 PCB 编辑器截图，保存为 PNG 文件并返回路径', {}, async () => {
     const data = await bridge.command('screenshot') as any;
-    if (data?.image) {
-      return { content: [{ type: 'image' as const, data: data.image, mimeType: 'image/png' }] };
+    const raw = data?.imageDataUrl || data?.image || '';
+    if (!raw) {
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
     }
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    // Extract base64 from data URL or use raw base64
+    const base64 = raw.includes(',') ? raw.split(',', 2)[1] : raw;
+    const buffer = Buffer.from(base64, 'base64');
+    const outDir = process.env.JLCEDA_SCREENSHOT_DIR || process.cwd();
+    const outFile = path.join(outDir, 'pcb_screenshot.png');
+    fs.writeFileSync(outFile, buffer);
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ savedTo: outFile, sizeBytes: buffer.length, width: data?.width, height: data?.height }, null, 2) }] };
   });
 
   server.tool('pcb_run_drc', '运行 PCB 设计规则检查 (DRC)', {}, async () => {
