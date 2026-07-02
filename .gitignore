@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+*.eext
+*.lcex
+packages/jlc-bridge/dist/
+packages/jlc-bridge/build/package/
+packages/jlc-bridge/build/*.eext
+packages/jlc-bridge/build/*.lcex
+relay.log
+relay.err.log
+relay.out.log

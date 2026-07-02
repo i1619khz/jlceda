@@ -1,0 +1,19 @@
+{
+  "name": "jlceda",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-driven PCB design pipeline via MCP \u2014 control JLCEDA Pro from any AI coding agent",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:mcp": "cd packages/jlcmcp && npm run build",
+    "build:bridge": "cd packages/jlc-bridge && npm run build",
+    "build": "npm run build:mcp && npm run build:bridge",
+    "relay": "node packages/jlc-bridge/relay.js",
+    "deploy": "node scripts/deploy-bridge.cjs",
+    "clear": "node scripts/clear-bridge.cjs",
+    "smoke:ping": "node packages/jlc-bridge/smoke-ping.js"
+  }
+}
