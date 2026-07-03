@@ -30,26 +30,37 @@ export async function getCurrentProjectInfo(): Promise<any> {
 
   const documents: any[] = [];
   const data = Array.isArray(info.data) ? info.data : [];
-  for (const item of data) {
+  const pushDoc = (item: any, parentBoardName?: string) => {
+    if (!item) return;
     const type = item?.itemType || '';
-    const base = {
+    const doc: any = {
       itemType: type,
       uuid: item?.uuid || '',
       name: item?.name || '',
       parentProjectUuid: item?.parentProjectUuid || '',
+      parentBoardName: parentBoardName || '',
     };
-    if (type === 'SCHEMATIC' || type === 'CBB_SCHEMATIC') {
-      const pages = Array.isArray(item.page)
-        ? item.page.map((p: any) => ({
-            itemType: p?.itemType || 'SCHEMATIC_PAGE',
-            uuid: p?.uuid || '',
-            name: p?.name || '',
-            parentSchematicUuid: p?.parentSchematicUuid || item?.uuid || '',
-          }))
-        : [];
-      documents.push({ ...base, page: pages });
+    if ((type === 'Schematic' || type === 'CBB Schematic') && Array.isArray(item.page)) {
+      doc.page = item.page.map((p: any) => ({
+        itemType: p?.itemType || 'Schematic Page',
+        uuid: p?.uuid || '',
+        name: p?.name || '',
+        parentSchematicUuid: p?.parentSchematicUuid || item?.uuid || '',
+      }));
+    }
+    documents.push(doc);
+  };
+
+  for (const item of data) {
+    const type = item?.itemType || '';
+    if (type === 'Board') {
+      // Board is a container: drill into its schematic/pcb children to get their UUIDs
+      const boardName = item?.name || '';
+      pushDoc(item, boardName); // keep the board itself too (no uuid on board)
+      if (item?.schematic) pushDoc(item.schematic, boardName);
+      if (item?.pcb) pushDoc(item.pcb, boardName);
     } else {
-      documents.push(base);
+      pushDoc(item);
     }
   }
 

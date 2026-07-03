@@ -57,19 +57,19 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
       }
 
       const typeMap: Record<string, string[]> = {
-        schematic: ['SCHEMATIC', 'CBB_SCHEMATIC'],
-        schematic_page: ['SCHEMATIC_PAGE'],
-        pcb: ['PCB'],
-        panel: ['PANEL'],
-        board: ['BOARD'],
+        schematic: ['Schematic', 'CBB Schematic'],
+        schematic_page: ['Schematic Page'],
+        pcb: ['PCB', 'CBB PCB'],
+        panel: ['Panel'],
+        board: ['Board'],
       };
-      const wanted = typeMap[documentType] || [documentType.toUpperCase()];
+      const wanted = typeMap[documentType] || [documentType];
       const docs = project.documents as Array<any>;
       let candidates: any[] = [];
 
       for (const doc of docs) {
         if (wanted.includes(doc?.itemType)) candidates.push(doc);
-        if (documentType === 'schematic' && Array.isArray(doc?.page)) {
+        if (documentType === 'schematic_page' && Array.isArray(doc?.page)) {
           for (const page of doc.page) {
             if (wanted.includes(page?.itemType)) candidates.push(page);
           }
@@ -85,7 +85,16 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: `未找到类型为 ${documentType}${name ? ` 且名称为 "${name}"` : ''} 的文档` }, null, 2) }] };
       }
 
-      targetUuid = candidates[0]?.uuid;
+      // For schematic type, prefer the page uuid (openDocument only opens pages, not the schematic root)
+      let targetDoc = candidates[0];
+      if (documentType === 'schematic' && Array.isArray(targetDoc?.page) && targetDoc.page.length > 0) {
+        const matchingPage = name?.trim()
+          ? targetDoc.page.find((pg: any) => (pg?.name || '').toLowerCase() === name.trim().toLowerCase())
+          : targetDoc.page[0];
+        if (matchingPage?.uuid) targetDoc = matchingPage;
+      }
+
+      targetUuid = targetDoc?.uuid;
       if (!targetUuid) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: '匹配到的文档没有 UUID' }, null, 2) }] };
       }
