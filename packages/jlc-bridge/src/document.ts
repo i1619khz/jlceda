@@ -82,41 +82,64 @@ export async function getOpenDocuments(): Promise<any> {
     throw new Error('current EDA does not support dmt_EditorControl');
   }
 
-  let currentDoc: any = null;
-  try {
-    const info = await api.dmt_EditorControl.getCurrentDocumentInfo();
-    if (info) {
-      currentDoc = {
-        documentType: info.documentType,
-        uuid: info.uuid || '',
-        tabId: info.tabId || '',
-      };
-    }
-  } catch { /* ignore */ }
+  const DOCTYPE_MAP: Record<number, string> = {
+    [-1]: 'HOME',
+    [0]: 'BLANK',
+    [1]: 'SCHEMATIC_PAGE',
+    [3]: 'PCB',
+    [12]: 'PCB_2D_PREVIEW',
+  };
 
   let documents: any[] = [];
+  let current: any = null;
+
   try {
     const tree = await api.dmt_EditorControl.getSplitScreenTree();
-    const collectTabs = (node: any) => {
+    const collectTabs = (node: any, acc: any[]) => {
       if (!node) return;
       if (Array.isArray(node.tabs)) {
         for (const tab of node.tabs) {
-          documents.push({
-            documentType: tab.documentType,
-            uuid: tab.uuid || tab.documentUuid || '',
+          const data = tab?.data || {};
+          const doctype = Number(data.doctype);
+          const uuid = String(data.creator || '').trim();
+          const projectId = String(data.pid || '').trim();
+          const realTitle = data['real-title'] || tab?.title || tab?.name || '';
+          const doc: any = {
             tabId: tab.tabId || tab.id || '',
-            title: tab.title || tab.name || '',
-          });
+            title: realTitle,
+            uuid,
+            documentType: DOCTYPE_MAP[doctype] ?? (Number.isFinite(doctype) ? String(doctype) : ''),
+            doctype,
+            projectId,
+          };
+          acc.push(doc);
         }
       }
       if (Array.isArray(node.children)) {
-        for (const child of node.children) collectTabs(child);
+        for (const child of node.children) collectTabs(child, acc);
       }
     };
-    if (tree) collectTabs(tree);
+    if (tree) {
+      collectTabs(tree, documents);
+      // heuristic: first non-home document is treated as current focus
+      current = documents.find((d) => d.uuid && d.documentType !== 'HOME') || documents[0] || null;
+      if (current) current = { ...current };
+    }
   } catch { /* ignore */ }
 
-  return { current: currentDoc, documents };
+  return { current, documents };
+}
+
+export async function closeDocument(params: { tabId: string }): Promise<any> {
+  const api = anyEda();
+  if (!api?.dmt_EditorControl?.closeDocument) {
+    throw new Error('current EDA does not support dmt_EditorControl.closeDocument');
+  }
+  const tabId = String(params?.tabId || '').trim();
+  if (!tabId) throw new Error('tabId is required');
+  const ok = await api.dmt_EditorControl.closeDocument(tabId);
+  await new Promise(r => setTimeout(r, 300));
+  return { closed: Boolean(ok), tabId };
 }
 
 export async function activateDocument(params: { tabId: string }): Promise<any> {

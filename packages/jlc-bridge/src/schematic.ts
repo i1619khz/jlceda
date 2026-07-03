@@ -10,29 +10,47 @@ export async function getSchematicState(): Promise<any> {
 
   const rows = await api.sch_PrimitiveComponent.getAll(undefined, true);
   const components = (Array.isArray(rows) ? rows : []).map((r: any) => ({
-    primitiveId: r?.getState_PrimitiveId?.() || '',
-    designator: r?.getState_Designator?.() || '',
-    name: r?.getState_Name?.() || r?.getState_DisplayName?.() || '',
-    value: r?.getState_Value?.() || '',
+    primitiveId: r?.getState_PrimitiveId?.() || r?.primitiveId || '',
+    designator: r?.getState_Designator?.() || r?.designator || '',
+    name: r?.getState_Name?.() || r?.name || '',
+    value: r?.getState_Value?.() || r?.value || '',
+    x: Number(r?.getState_X?.() ?? r?.x ?? 0),
+    y: Number(r?.getState_Y?.() ?? r?.y ?? 0),
+    rotation: Number(r?.getState_Rotation?.() ?? r?.rotation ?? 0),
     component: {
       libraryUuid: r?.getState_LibraryUuid?.() || r?.getState_ComponentLibraryUuid?.() || '',
       uuid: r?.getState_Uuid?.() || r?.getState_ComponentUuid?.() || '',
     },
   })).filter((c: any) => c.primitiveId);
 
+  // Pins: sch_PrimitivePin.getAll() always returns [] — must enumerate per-component
+  // via getAllPinsByPrimitiveId, and pin objects use direct properties (not getState_*).
   let pins: any[] = [];
-  if (api?.sch_PrimitivePin?.getAll) {
-    try {
-      const pinRows = await api.sch_PrimitivePin.getAll();
-      pins = (Array.isArray(pinRows) ? pinRows : []).map((p: any) => ({
-        primitiveId: p?.getState_PrimitiveId?.() || '',
-        pinNumber: p?.getState_PinNumber?.() || p?.getState_Number?.() || '',
-        pinName: p?.getState_PinName?.() || p?.getState_Name?.() || '',
-        net: p?.getState_Net?.() || p?.getState_NetName?.() || '',
-        x: Number(p?.getState_X?.() ?? 0),
-        y: Number(p?.getState_Y?.() ?? 0),
-      })).filter((p: any) => p.primitiveId);
-    } catch { /* ignore */ }
+  if (api?.sch_PrimitiveComponent?.getAllPinsByPrimitiveId) {
+    for (const comp of components) {
+      try {
+        const pinRows = await api.sch_PrimitiveComponent.getAllPinsByPrimitiveId(comp.primitiveId);
+        if (!Array.isArray(pinRows)) continue;
+        for (const p of pinRows) {
+          const x = Number(p?.x ?? 0);
+          const y = Number(p?.y ?? 0);
+          const rotation = Number(p?.rotation ?? 0);
+          const pinLength = Number(p?.pinLength ?? 0);
+          const rad = rotation * Math.PI / 180;
+          pins.push({
+            primitiveId: p?.primitiveId || '',
+            parentPrimitiveId: comp.primitiveId,
+            parentDesignator: comp.designator,
+            pinNumber: String(p?.pinNumber ?? ''),
+            pinName: String(p?.pinName ?? ''),
+            net: String(p?.net ?? ''),
+            x, y, rotation, pinLength,
+            endPoint: { x: Math.round((x + Math.cos(rad) * pinLength) * 100) / 100, y: Math.round((y + Math.sin(rad) * pinLength) * 100) / 100 },
+            noConnected: Boolean(p?.noConnected),
+          });
+        }
+      } catch { /* ignore per-component errors */ }
+    }
   }
 
   let wires: any[] = [];
@@ -40,8 +58,8 @@ export async function getSchematicState(): Promise<any> {
     try {
       const wireRows = await api.sch_PrimitiveWire.getAll();
       wires = (Array.isArray(wireRows) ? wireRows : []).map((w: any) => ({
-        primitiveId: w?.getState_PrimitiveId?.() || '',
-        net: w?.getState_Net?.() || w?.getState_NetName?.() || '',
+        primitiveId: w?.getState_PrimitiveId?.() || w?.primitiveId || '',
+        net: w?.getState_Net?.() || w?.net || '',
       })).filter((w: any) => w.primitiveId);
     } catch { /* ignore */ }
   }
@@ -186,61 +204,32 @@ export async function schGetComponentPins(params: { primitiveId: string }): Prom
   const { primitiveId } = params;
   if (!primitiveId) throw new Error('primitiveId is required');
 
-  const getVal = (obj: any, ...keys: string[]) => {
-    for (const k of keys) {
-      if (typeof obj?.[`getState_${k}`] === 'function') {
-        const v = obj[`getState_${k}`]();
-        if (v !== undefined && v !== '') return v;
-      }
-      if (obj?.[k] !== undefined && obj?.[k] !== '') return obj[k];
-    }
-    return '';
-  };
-
+  // Pin objects use direct properties (primitiveId/x/y/pinNumber/pinName/rotation/pinLength/net),
+  // NOT getState_* methods. Only getAllPinsByPrimitiveId returns real pin data.
   let pinRows: any[] = [];
-
   if (api?.sch_PrimitiveComponent?.getAllPinsByPrimitiveId) {
     try {
       const result = await api.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
-      if (Array.isArray(result) && result.length > 0) pinRows = result;
-    } catch { /* fallback below */ }
-  }
-
-  if (pinRows.length === 0 && api?.sch_PrimitivePin?.getAll) {
-    try {
-      const allPins = await api.sch_PrimitivePin.getAll();
-      if (Array.isArray(allPins)) {
-        pinRows = allPins.filter((p: any) => {
-          const parent = getVal(p, 'ParentPrimitiveId', 'ComponentPrimitiveId', 'Parent');
-          return parent === primitiveId;
-        });
-      }
-    } catch { /* ignore */ }
-  }
-
-  if (pinRows.length === 0 && api?.sch_PrimitivePin?.getAll) {
-    try {
-      const allPins = await api.sch_PrimitivePin.getAll();
-      if (Array.isArray(allPins)) pinRows = allPins;
+      if (Array.isArray(result)) pinRows = result;
     } catch { /* ignore */ }
   }
 
   const pins = pinRows.map((p: any) => {
-    const x = Number(getVal(p, 'X', 'Position_X') ?? 0);
-    const y = Number(getVal(p, 'Y', 'Position_Y') ?? 0);
-    const rotation = Number(getVal(p, 'Rotation') ?? 0);
-    const pinLength = Number(getVal(p, 'PinLength') ?? 0);
+    const x = Number(p?.x ?? 0);
+    const y = Number(p?.y ?? 0);
+    const rotation = Number(p?.rotation ?? 0);
+    const pinLength = Number(p?.pinLength ?? 0);
     const rad = rotation * Math.PI / 180;
     const endX = x + Math.cos(rad) * pinLength;
     const endY = y + Math.sin(rad) * pinLength;
     return {
-      primitiveId: getVal(p, 'PrimitiveId') || p?.primitiveId || '',
-      pinNumber: getVal(p, 'PinNumber', 'Number'),
-      pinName: getVal(p, 'PinName', 'Name'),
-      net: getVal(p, 'Net', 'NetName'),
+      primitiveId: p?.primitiveId || '',
+      pinNumber: String(p?.pinNumber ?? ''),
+      pinName: String(p?.pinName ?? ''),
+      net: String(p?.net ?? ''),
       x, y, rotation, pinLength,
       endPoint: { x: Math.round(endX * 100) / 100, y: Math.round(endY * 100) / 100 },
-      parent: getVal(p, 'ParentPrimitiveId', 'ComponentPrimitiveId', 'Parent'),
+      noConnected: Boolean(p?.noConnected),
     };
   });
   return { primitiveId, pins };

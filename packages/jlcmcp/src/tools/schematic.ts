@@ -42,6 +42,13 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 
+  server.tool('pcb_eval', '在 EDA 运行时中执行任意 JS 代码（用于探测 API 行为），代码中可直接使用全局 eda 对象；返回 {ok, result}', {
+    code: z.string().describe('要执行的 JS 代码（async 函数体），可直接用 eda.xxx 调用 API，用 return 返回结果'),
+  }, async ({ code }: { code: string }) => {
+    const data = await bridge.command('eval', { code });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
   server.tool('pcb_ensure_document_open', '复合操作：按类型/名称（或 UUID）打开工程内指定文档，并返回 tabId', {
     documentType: z.enum(['schematic', 'schematic_page', 'pcb', 'panel', 'board']).describe('文档类型'),
     name: z.string().optional().describe('文档名称，如 "Schematic1"、"PCB1"；不填则匹配同类型的第一个'),
@@ -123,6 +130,13 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
     tabId: z.string().describe('标签页 ID（通过 pcb_get_open_documents 获取）'),
   }, async ({ tabId }: { tabId: string }) => {
     const data = await bridge.command('activate_document', { tabId });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_close_document', '关闭指定标签页文档（通过 tabId）', {
+    tabId: z.string().describe('标签页 ID'),
+  }, async ({ tabId }: { tabId: string }) => {
+    const data = await bridge.command('close_document', { tabId });
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 

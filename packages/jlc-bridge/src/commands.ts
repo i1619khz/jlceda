@@ -20,6 +20,20 @@ import {
   takeScreenshot,
 } from './pcb';
 import {
+  addNetToClass,
+  createNetClass,
+  deleteNetClass,
+  getAllNets,
+  getDrcRules,
+  getLayers,
+  getNetDetails,
+  highlightNet,
+  listNetClasses,
+  selectNet,
+  setCopperLayers,
+  setLayerVisible,
+} from './pcb-design';
+import {
   autoSilkscreen,
   getSilkscreens,
   moveSilkscreen,
@@ -34,6 +48,7 @@ import {
 } from './routing-rules';
 import {
   activateDocument,
+  closeDocument,
   getBoardInfo,
   getCurrentProjectInfo,
   getOpenDocuments,
@@ -57,6 +72,29 @@ import {
   schModifyComponent,
   schSearchDevice,
 } from './schematic';
+
+// ─── Safe serialization for eval results ───
+
+function toSafeJson(value: any, depth = 0): any {
+  if (depth > 5) return '[max depth]';
+  if (value === null || value === undefined) return value;
+  const t = typeof value;
+  if (t === 'function') return `[fn ${value.name || 'anonymous'}]`;
+  if (t === 'string' || t === 'number' || t === 'boolean' || t === 'bigint') return value;
+  if (t === 'object') {
+    // arrays
+    if (Array.isArray(value)) return value.slice(0, 100).map((v) => toSafeJson(v, depth + 1));
+    // avoid circular / huge objects: only copy enumerable own keys, capped
+    const out: Record<string, any> = {};
+    let count = 0;
+    for (const key of Object.keys(value)) {
+      if (count++ >= 60) { out['...'] = 'truncated'; break; }
+      try { out[key] = toSafeJson(value[key], depth + 1); } catch { out[key] = '[unreadable]'; }
+    }
+    return out;
+  }
+  return String(value);
+}
 
 export async function getFeatureSupport(): Promise<any> {
   const api = anyEda();
@@ -231,6 +269,9 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BridgeResult> 
       case 'activate_document':
         data = await activateDocument(p);
         break;
+      case 'close_document':
+        data = await closeDocument(p);
+        break;
       case 'get_schematic_state':
         data = await getSchematicState();
         break;
@@ -282,6 +323,53 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BridgeResult> 
       case 'get_component_bbox':
         data = await getComponentBBox(p);
         break;
+      case 'get_layers':
+        data = await getLayers();
+        break;
+      case 'set_copper_layers':
+        data = await setCopperLayers(p);
+        break;
+      case 'set_layer_visible':
+        data = await setLayerVisible(p);
+        break;
+      case 'get_all_nets':
+        data = await getAllNets();
+        break;
+      case 'get_net_details':
+        data = await getNetDetails(p);
+        break;
+      case 'select_net':
+        data = await selectNet(p);
+        break;
+      case 'highlight_net':
+        data = await highlightNet(p);
+        break;
+      case 'create_net_class':
+        data = await createNetClass(p);
+        break;
+      case 'delete_net_class':
+        data = await deleteNetClass(p);
+        break;
+      case 'add_net_to_class':
+        data = await addNetToClass(p);
+        break;
+      case 'list_net_classes':
+        data = await listNetClasses();
+        break;
+      case 'get_drc_rules':
+        data = await getDrcRules();
+        break;
+      case 'eval': {
+        // Run arbitrary JS in the EDA runtime using the global `eda` object.
+        // Used for self-service API probing without redeploying the extension.
+        const code = String(p?.code ?? '');
+        if (!code.trim()) throw new Error('code is required');
+        const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+        const fn = new AsyncFunction('eda', code);
+        const result = await fn((eda as any));
+        data = { ok: true, result: toSafeJson(result) };
+        break;
+      }
       default:
         throw new Error(`unknown action: ${cmd.action}`);
     }
