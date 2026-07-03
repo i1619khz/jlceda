@@ -16,8 +16,13 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 
-  server.tool('sch_get_project_nets', '获取当前工程所有网络名称（原理图侧）', {}, async () => {
+  server.tool('sch_get_project_nets', '获取当前工程所有网络名称（原理图侧，依赖EDA网络识别）', {}, async () => {
     const data = await bridge.command('get_project_nets');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('sch_get_connectivity', '推导原理图连通性（基于引脚坐标+走线坐标匹配，绕过EDA网络查询API）返回网表与未连接引脚', {}, async () => {
+    const data = await bridge.command('sch_get_connectivity');
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 

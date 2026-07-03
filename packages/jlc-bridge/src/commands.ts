@@ -75,6 +75,7 @@ import {
   createPcbComponent,
   getNetlist,
   getProjectAllNets,
+  getConnectivity,
   getSchematicState,
   runSchDrc,
   schAutoLayout,
@@ -294,6 +295,9 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BridgeResult> 
         break;
       case 'get_project_nets':
         data = await getProjectAllNets();
+        break;
+      case 'sch_get_connectivity':
+        data = await getConnectivity();
         break;
       case 'sch_auto_routing':
         data = await schAutoRouting(p);

@@ -57,10 +57,17 @@ export async function getSchematicState(): Promise<any> {
   if (api?.sch_PrimitiveWire?.getAll) {
     try {
       const wireRows = await api.sch_PrimitiveWire.getAll();
-      wires = (Array.isArray(wireRows) ? wireRows : []).map((w: any) => ({
-        primitiveId: w?.getState_PrimitiveId?.() || w?.primitiveId || '',
-        net: w?.getState_Net?.() || w?.net || '',
-      })).filter((w: any) => w.primitiveId);
+      wires = (Array.isArray(wireRows) ? wireRows : []).map((w: any) => {
+        const rawLine = w?.getState_Line?.();
+        const line: number[] = Array.isArray(rawLine)
+          ? rawLine.map((v: any) => Number(v))
+          : (Array.isArray(w?.line) ? w.line.map((v: any) => Number(v)) : []);
+        return {
+          primitiveId: w?.getState_PrimitiveId?.() || w?.primitiveId || '',
+          net: w?.getState_Net?.() || w?.net || '',
+          line,
+        };
+      }).filter((w: any) => w.primitiveId);
     } catch { /* ignore */ }
   }
 
@@ -87,6 +94,121 @@ export async function getProjectAllNets(): Promise<any> {
     raw: n,
   }));
   return { totalNets: nets.length, nets };
+}
+
+/**
+ * Derive schematic connectivity from pins + wires by coordinate matching,
+ * bypassing the EDA's net query APIs (which return empty even when wires exist).
+ * Any two endpoints (pin endpoints or wire vertices) sharing the same coordinate
+ * (rounded to 2 decimals) belong to the same electrical node (union-find).
+ */
+export async function getConnectivity(): Promise<any> {
+  const state = await getSchematicState();
+  const pins = state.pins as any[];
+  const wires = (state.wires || []) as any[];
+
+  const key = (x: number, y: number) =>
+    `${Math.round(x * 100) / 100},${Math.round(y * 100) / 100}`;
+
+  const parent = new Map<string, string>();
+  const find = (a: string): string => {
+    if (!parent.has(a)) parent.set(a, a);
+    let cur = a;
+    while (parent.get(cur) !== cur) {
+      parent.set(cur, parent.get(parent.get(cur)!)!);
+      cur = parent.get(cur)!;
+    }
+    return cur;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  // union consecutive vertices within each wire
+  for (const w of wires) {
+    const line: number[] = w.line || [];
+    for (let i = 0; i + 3 < line.length; i += 2) {
+      union(key(line[i], line[i + 1]), key(line[i + 2], line[i + 3]));
+    }
+  }
+
+  // map each pin to its endpoint coordinate key
+  const pinByKey = new Map<string, any[]>();
+  for (const p of pins) {
+    const ep = p.endPoint;
+    if (!ep) continue;
+    const k = key(ep.x, ep.y);
+    if (!pinByKey.has(k)) pinByKey.set(k, []);
+    pinByKey.get(k)!.push(p);
+  }
+
+  // union pins with wire vertices at same coordinate (tol 0.005)
+  for (const w of wires) {
+    const line: number[] = w.line || [];
+    for (let i = 0; i + 1 < line.length; i += 2) {
+      const vx = line[i], vy = line[i + 1];
+      for (const [pk, parr] of pinByKey) {
+        const [px, py] = pk.split(',').map(Number);
+        if (Math.abs(px - vx) < 0.01 && Math.abs(py - vy) < 0.01) {
+          union(pk, key(vx, vy));
+        }
+      }
+    }
+  }
+
+  // group pins by root
+  const groups = new Map<string, any[]>();
+  for (const [pk] of pinByKey) {
+    const root = find(pk);
+    if (!groups.has(root)) groups.set(root, []);
+    for (const p of pinByKey.get(pk)!) groups.get(root)!.push(p);
+  }
+
+  const nets: any[] = [];
+  let autoIdx = 0;
+  for (const [, groupPins] of groups) {
+    if (groupPins.length === 0) continue;
+    const touchedKeys = new Set(groupPins.map(p => key(p.endPoint.x, p.endPoint.y)));
+    let netName = '';
+    for (const p of groupPins) { if (!netName && p.net) netName = p.net; }
+    for (const w of wires) {
+      const line: number[] = w.line || [];
+      let belongs = false;
+      for (let i = 0; i + 1 < line.length; i += 2) {
+        const vx = line[i], vy = line[i + 1];
+        if ([...touchedKeys].some(tk => {
+          const [px, py] = tk.split(',').map(Number);
+          return Math.abs(px - vx) < 0.01 && Math.abs(py - vy) < 0.01;
+        })) { belongs = true; break; }
+      }
+      if (belongs && w.net) { netName = w.net; break; }
+    }
+    if (!netName) netName = `NET${++autoIdx}`;
+    nets.push({
+      net: netName,
+      pinCount: groupPins.length,
+      pins: groupPins.map(p => ({
+        designator: p.parentDesignator || '',
+        pinNumber: p.pinNumber,
+        pinName: p.pinName,
+        endPoint: p.endPoint,
+      })),
+    });
+  }
+
+  const connected = new Set(nets.flatMap(n => n.pins.map((p: any) => p.designator + p.pinNumber)));
+  const unconnected = pins
+    .filter(p => p.parentDesignator && !connected.has(p.parentDesignator + p.pinNumber))
+    .map(p => ({ designator: p.parentDesignator, pinNumber: p.pinNumber, pinName: p.pinName, endPoint: p.endPoint }));
+
+  return {
+    derivedFrom: { pins: pins.length, wires: wires.length },
+    totalNets: nets.length,
+    nets: nets.sort((a, b) => b.pinCount - a.pinCount),
+    unconnectedPins: unconnected,
+    note: 'Connectivity derived by coordinate matching (EDA net query API returns empty).',
+  };
 }
 
 export async function schAutoRouting(params?: { uuids?: string[]; netlist?: any; designatorDeviceTypeMap?: any }): Promise<any> {
