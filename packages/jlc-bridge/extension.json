@@ -2,8 +2,8 @@
   "name": "jlc-bridge",
   "uuid": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6",
   "displayName": "JLC Bridge",
-  "description": "JLC Bridge for PCB automation (MCP v0.1.36)",
-  "version": "0.1.36",
+  "description": "JLC Bridge for PCB automation (MCP v0.1.37)",
+  "version": "0.1.37",
   "publisher": "OpenClaw",
   "engines": {
     "eda": "^2.3.0"

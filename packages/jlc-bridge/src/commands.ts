@@ -21,14 +21,25 @@ import {
 } from './pcb';
 import {
   addNetToClass,
+  createArc,
+  createFill,
   createNetClass,
+  createPolyline,
+  deleteArc,
+  deleteFill,
   deleteNetClass,
+  deletePolyline,
   getAllNets,
   getDrcRules,
   getLayers,
+  getNetByNetRules,
   getNetDetails,
+  getNetRules,
+  getRegionRules,
   highlightNet,
   listNetClasses,
+  overwriteNetRules,
+  overwriteRegionRules,
   selectNet,
   setCopperLayers,
   setLayerVisible,
@@ -370,6 +381,39 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BridgeResult> 
         break;
       case 'get_drc_rules':
         data = await getDrcRules();
+        break;
+      case 'get_region_rules':
+        data = await getRegionRules();
+        break;
+      case 'overwrite_region_rules':
+        data = await overwriteRegionRules(p);
+        break;
+      case 'get_net_rules':
+        data = await getNetRules();
+        break;
+      case 'get_net_by_net_rules':
+        data = await getNetByNetRules();
+        break;
+      case 'overwrite_net_rules':
+        data = await overwriteNetRules(p);
+        break;
+      case 'create_arc':
+        data = await createArc(p);
+        break;
+      case 'delete_arc':
+        data = await deleteArc(p);
+        break;
+      case 'create_polyline':
+        data = await createPolyline(p);
+        break;
+      case 'delete_polyline':
+        data = await deletePolyline(p);
+        break;
+      case 'create_fill':
+        data = await createFill(p);
+        break;
+      case 'delete_fill':
+        data = await deleteFill(p);
         break;
       case 'eval': {
         // Run arbitrary JS in the EDA runtime using the global `eda` object.

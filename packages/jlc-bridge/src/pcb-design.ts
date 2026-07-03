@@ -203,3 +203,136 @@ export async function getDrcRules(): Promise<any> {
   }
   return { currentRuleName: currentName, currentRule: current, allRuleNames: all.map((r: any) => r?.name || r) };
 }
+
+// ─── Region rules (per-region spacing overrides) ───
+
+export async function getRegionRules(): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_Drc?.getRegionRules) {
+    throw new Error('current EDA does not support getRegionRules');
+  }
+  const rows = await api.pcb_Drc.getRegionRules();
+  const rules = Array.isArray(rows) ? rows : [];
+  return { totalRegionRules: rules.length, regionRules: rules };
+}
+
+export async function overwriteRegionRules(params: { regionRules: any[] }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_Drc?.overwriteRegionRules) {
+    throw new Error('current EDA does not support overwriteRegionRules');
+  }
+  const rules = Array.isArray(params?.regionRules) ? params.regionRules : [];
+  const ok = await api.pcb_Drc.overwriteRegionRules(rules);
+  return { overwritten: Boolean(ok), count: rules.length };
+}
+
+// ─── Net rules (per-net / per-netclass rule overrides) ───
+
+export async function getNetRules(): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_Drc?.getNetRules) {
+    throw new Error('current EDA does not support getNetRules');
+  }
+  const rows = await api.pcb_Drc.getNetRules();
+  const rules = Array.isArray(rows) ? rows : [];
+  return { totalNetRules: rules.length, netRules: rules };
+}
+
+export async function getNetByNetRules(): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_Drc?.getNetByNetRules) {
+    throw new Error('current EDA does not support getNetByNetRules');
+  }
+  const rows = await api.pcb_Drc.getNetByNetRules();
+  const rules = Array.isArray(rows) ? rows : [];
+  return { totalNetByNetRules: rules.length, netByNetRules: rules };
+}
+
+export async function overwriteNetRules(params: { netRules: any[] }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_Drc?.overwriteNetRules) {
+    throw new Error('current EDA does not support overwriteNetRules');
+  }
+  const rules = Array.isArray(params?.netRules) ? params.netRules : [];
+  const ok = await api.pcb_Drc.overwriteNetRules(rules);
+  return { overwritten: Boolean(ok), count: rules.length };
+}
+
+// ─── Primitive graphics: arc / polyline / fill ───
+
+function getPid(p: any): string {
+  try { const id = p?.getState_PrimitiveId?.(); if (typeof id === 'string' && id.trim()) return id.trim(); } catch { /* ignore */ }
+  return p?.primitiveId || '';
+}
+
+export async function createArc(params: {
+  net?: string; layer: number; startX: number; startY: number; endX: number; endY: number;
+  arcAngle: number; lineWidth?: number; primitiveLock?: boolean;
+}): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitiveArc?.create) throw new Error('current EDA does not support pcb_PrimitiveArc.create');
+  const { net = '', layer, startX, startY, endX, endY, arcAngle, lineWidth = 6, primitiveLock = false } = params;
+  if (!Number.isFinite(layer) || !Number.isFinite(startX)) throw new Error('layer/startX/startY/endX/endY/arcAngle are required');
+  const arc = await api.pcb_PrimitiveArc.create(net, Number(layer), Number(startX), Number(startY), Number(endX), Number(endY), Number(arcAngle), Number(lineWidth), undefined, Boolean(primitiveLock));
+  return { primitiveId: getPid(arc), net, layer, startX, startY, endX, endY, arcAngle, lineWidth };
+}
+
+export async function deleteArc(params: { primitiveId?: string; primitiveIds?: string[] }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitiveArc?.delete) throw new Error('current EDA does not support pcb_PrimitiveArc.delete');
+  const ids = Array.isArray(params?.primitiveIds) ? params.primitiveIds : (params?.primitiveId ? [params.primitiveId] : []);
+  if (!ids.length) throw new Error('primitiveId or primitiveIds required');
+  const ok = await api.pcb_PrimitiveArc.delete(ids as any);
+  return { deleted: Boolean(ok), primitiveIds: ids };
+}
+
+export async function createPolyline(params: {
+  net?: string; layer: number; points: Array<[number, number]>; lineWidth?: number; primitiveLock?: boolean;
+}): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitivePolyline?.create || !api?.pcb_MathPolygon?.createPolygon) {
+    throw new Error('current EDA does not support pcb_PrimitivePolyline.create');
+  }
+  const { net = '', layer, points, lineWidth = 6, primitiveLock = false } = params;
+  if (!Array.isArray(points) || points.length < 2) throw new Error('points must have at least 2 [x,y] pairs');
+  // build polygon source: [x1,y1, 'L', x2,y2, ...]
+  const source: any[] = [Number(points[0][0]), Number(points[0][1])];
+  for (let i = 1; i < points.length; i++) { source.push('L'); source.push(Number(points[i][0])); source.push(Number(points[i][1])); }
+  const polygon = api.pcb_MathPolygon.createPolygon(source as any);
+  const poly = await api.pcb_PrimitivePolyline.create(net, Number(layer), polygon, Number(lineWidth), Boolean(primitiveLock));
+  return { primitiveId: getPid(poly), net, layer, pointCount: points.length, lineWidth };
+}
+
+export async function deletePolyline(params: { primitiveId?: string; primitiveIds?: string[] }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitivePolyline?.delete) throw new Error('current EDA does not support pcb_PrimitivePolyline.delete');
+  const ids = Array.isArray(params?.primitiveIds) ? params.primitiveIds : (params?.primitiveId ? [params.primitiveId] : []);
+  if (!ids.length) throw new Error('primitiveId or primitiveIds required');
+  const ok = await api.pcb_PrimitivePolyline.delete(ids as any);
+  return { deleted: Boolean(ok), primitiveIds: ids };
+}
+
+export async function createFill(params: {
+  layer: number; points: Array<[number, number]>; net?: string; fillMode?: number; lineWidth?: number; primitiveLock?: boolean;
+}): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitiveFill?.create || !api?.pcb_MathPolygon?.createPolygon) {
+    throw new Error('current EDA does not support pcb_PrimitiveFill.create');
+  }
+  const { layer, points, net = '', fillMode = 0, lineWidth = 4, primitiveLock = false } = params;
+  if (!Array.isArray(points) || points.length < 3) throw new Error('points must have at least 3 [x,y] pairs (closed region)');
+  const source: any[] = [Number(points[0][0]), Number(points[0][1])];
+  for (let i = 1; i < points.length; i++) { source.push('L'); source.push(Number(points[i][0])); source.push(Number(points[i][1])); }
+  const polygon = api.pcb_MathPolygon.createPolygon(source as any);
+  const fill = await api.pcb_PrimitiveFill.create(Number(layer), polygon, net, Number(fillMode), Number(lineWidth), Boolean(primitiveLock));
+  return { primitiveId: getPid(fill), layer, net, fillMode, pointCount: points.length, lineWidth };
+}
+
+export async function deleteFill(params: { primitiveId?: string; primitiveIds?: string[] }): Promise<any> {
+  const api = anyEda();
+  if (!api?.pcb_PrimitiveFill?.delete) throw new Error('current EDA does not support pcb_PrimitiveFill.delete');
+  const ids = Array.isArray(params?.primitiveIds) ? params.primitiveIds : (params?.primitiveId ? [params.primitiveId] : []);
+  if (!ids.length) throw new Error('primitiveId or primitiveIds required');
+  const ok = await api.pcb_PrimitiveFill.delete(ids as any);
+  return { deleted: Boolean(ok), primitiveIds: ids };
+}

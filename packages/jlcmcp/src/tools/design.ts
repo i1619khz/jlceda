@@ -83,4 +83,91 @@ export function registerDesignTools(server: any, bridge: BridgeClient): void {
     const data = await bridge.command('get_drc_rules');
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
+
+  // ── Region & Net rules ──
+  server.tool('pcb_get_region_rules', '获取所有区域规则（BGA 等局部区域间距覆盖）', {}, async () => {
+    const data = await bridge.command('get_region_rules');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_overwrite_region_rules', '覆写区域规则（传入完整规则数组）', {
+    regionRules: z.array(z.any()).describe('完整区域规则数组（通过 pcb_get_region_rules 获取后修改）'),
+  }, async ({ regionRules }: { regionRules: any[] }) => {
+    const data = await bridge.command('overwrite_region_rules', { regionRules });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_get_net_rules', '获取所有网络/网络类规则（按网络设线宽间距覆盖）', {}, async () => {
+    const data = await bridge.command('get_net_rules');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_get_net_by_net_rules', '获取按网络分类的规则映射', {}, async () => {
+    const data = await bridge.command('get_net_by_net_rules');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_overwrite_net_rules', '覆写网络规则（传入完整规则数组）', {
+    netRules: z.array(z.any()).describe('完整网络规则数组（通过 pcb_get_net_rules 获取后修改）'),
+  }, async ({ netRules }: { netRules: any[] }) => {
+    const data = await bridge.command('overwrite_net_rules', { netRules });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  // ── Primitive graphics: arc / polyline / fill ──
+  server.tool('pcb_create_arc', '创建圆弧（异形板框/丝印图形）', {
+    net: z.string().optional().default('').describe('网络名（板框/丝印留空）'),
+    layer: z.number().int().describe('层 ID（11=板框, 3/4=丝印）'),
+    startX: z.number(), startY: z.number(), endX: z.number(), endY: z.number(),
+    arcAngle: z.number().describe('圆弧角度（度）'),
+    lineWidth: z.number().optional().default(6),
+    primitiveLock: z.boolean().optional().default(false),
+  }, async (p: any) => {
+    const data = await bridge.command('create_arc', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_delete_arc', '删除圆弧', {
+    primitiveId: z.string().optional(), primitiveIds: z.array(z.string()).optional(),
+  }, async (p: any) => {
+    const data = await bridge.command('delete_arc', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_create_polyline', '创建多段折线（异形板框/丝印/铜区轮廓）', {
+    net: z.string().optional().default(''),
+    layer: z.number().int(),
+    points: z.array(z.array(z.number()).length(2)).min(2).describe('[[x,y],[x,y],...]'),
+    lineWidth: z.number().optional().default(6),
+    primitiveLock: z.boolean().optional().default(false),
+  }, async (p: any) => {
+    const data = await bridge.command('create_polyline', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_delete_polyline', '删除折线', {
+    primitiveId: z.string().optional(), primitiveIds: z.array(z.string()).optional(),
+  }, async (p: any) => {
+    const data = await bridge.command('delete_polyline', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_create_fill', '创建实心填充区（丝印/文档层填充图形；铜层铺铜请用 pcb_create_copper_pour）', {
+    layer: z.number().int(),
+    points: z.array(z.array(z.number()).length(2)).min(3).describe('闭合区域顶点 [[x,y],...]'),
+    net: z.string().optional().default(''),
+    fillMode: z.number().int().optional().default(0).describe('0=实心, 1=网格'),
+    lineWidth: z.number().optional().default(4),
+    primitiveLock: z.boolean().optional().default(false),
+  }, async (p: any) => {
+    const data = await bridge.command('create_fill', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_delete_fill', '删除填充区', {
+    primitiveId: z.string().optional(), primitiveIds: z.array(z.string()).optional(),
+  }, async (p: any) => {
+    const data = await bridge.command('delete_fill', p);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
 }
