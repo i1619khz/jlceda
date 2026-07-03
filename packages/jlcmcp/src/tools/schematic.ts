@@ -37,6 +37,79 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 
+  server.tool('pcb_get_current_project_info', '获取当前工程的详细属性，包括工程内所有文档（含未打开）的 UUID、名称、类型', {}, async () => {
+    const data = await bridge.command('get_current_project_info');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('pcb_ensure_document_open', '复合操作：按类型/名称（或 UUID）打开工程内指定文档，并返回 tabId', {
+    documentType: z.enum(['schematic', 'schematic_page', 'pcb', 'panel', 'board']).describe('文档类型'),
+    name: z.string().optional().describe('文档名称，如 "Schematic1"、"PCB1"；不填则匹配同类型的第一个'),
+    uuid: z.string().optional().describe('文档 UUID；若提供则优先使用，不再按名称查找'),
+  }, async ({ documentType, name, uuid }: { documentType: 'schematic' | 'schematic_page' | 'pcb' | 'panel' | 'board'; name?: string; uuid?: string }) => {
+    let targetUuid = uuid?.trim();
+
+    if (!targetUuid) {
+      const projectInfo = (await bridge.command('get_current_project_info')) as any;
+      const project = projectInfo?.project;
+      if (!project || !Array.isArray(project.documents)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: '无法获取当前工程信息或工程内无文档' }, null, 2) }] };
+      }
+
+      const typeMap: Record<string, string[]> = {
+        schematic: ['SCHEMATIC', 'CBB_SCHEMATIC'],
+        schematic_page: ['SCHEMATIC_PAGE'],
+        pcb: ['PCB'],
+        panel: ['PANEL'],
+        board: ['BOARD'],
+      };
+      const wanted = typeMap[documentType] || [documentType.toUpperCase()];
+      const docs = project.documents as Array<any>;
+      let candidates: any[] = [];
+
+      for (const doc of docs) {
+        if (wanted.includes(doc?.itemType)) candidates.push(doc);
+        if (documentType === 'schematic' && Array.isArray(doc?.page)) {
+          for (const page of doc.page) {
+            if (wanted.includes(page?.itemType)) candidates.push(page);
+          }
+        }
+      }
+
+      if (name?.trim()) {
+        const n = name.trim();
+        candidates = candidates.filter(c => (c?.name || '').toLowerCase() === n.toLowerCase());
+      }
+
+      if (candidates.length === 0) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: `未找到类型为 ${documentType}${name ? ` 且名称为 "${name}"` : ''} 的文档` }, null, 2) }] };
+      }
+
+      targetUuid = candidates[0]?.uuid;
+      if (!targetUuid) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: '匹配到的文档没有 UUID' }, null, 2) }] };
+      }
+    }
+
+    await bridge.command('open_document', { uuid: targetUuid });
+    const openDocs = (await bridge.command('get_open_documents')) as any;
+    const opened = (openDocs?.documents || []).find((d: any) => (d?.uuid && d.uuid === targetUuid) || (d?.title || '').toLowerCase().includes((name || '').toLowerCase()));
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          uuid: targetUuid,
+          tabId: opened?.tabId || null,
+          title: opened?.title || null,
+          documentType,
+          name: name || null,
+        }, null, 2),
+      }],
+    };
+  });
+
   server.tool('pcb_activate_document', '切换到指定标签页（通过 tabId 激活文档，可切换原理图/PCB）', {
     tabId: z.string().describe('标签页 ID（通过 pcb_get_open_documents 获取）'),
   }, async ({ tabId }: { tabId: string }) => {
