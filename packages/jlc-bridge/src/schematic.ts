@@ -76,6 +76,37 @@ export async function getNetlist(params: { type?: string }): Promise<any> {
   return { netlist: typeof netlist === 'string' ? netlist : JSON.stringify(netlist) };
 }
 
+export async function getProjectAllNets(): Promise<any> {
+  const api = anyEda();
+  if (!api?.sch_Net?.getCurrentProjectAllNets) {
+    throw new Error('current EDA does not support sch_Net.getCurrentProjectAllNets');
+  }
+  const rows = await api.sch_Net.getCurrentProjectAllNets();
+  const nets = (Array.isArray(rows) ? rows : []).map((n: any) => ({
+    name: String(n?.name || n?.net || ''),
+    raw: n,
+  }));
+  return { totalNets: nets.length, nets };
+}
+
+export async function schAutoRouting(params?: { uuids?: string[]; netlist?: any; designatorDeviceTypeMap?: any }): Promise<any> {
+  const api = anyEda();
+  if (!api?.sch_Document?.autoRouting) {
+    throw new Error('current EDA does not support sch_Document.autoRouting');
+  }
+  const result = await api.sch_Document.autoRouting(params ?? {});
+  return { success: Boolean(result), result };
+}
+
+export async function schAutoLayout(params?: { uuids?: string[]; netlist?: any; designatorDeviceTypeMap?: any }): Promise<any> {
+  const api = anyEda();
+  if (!api?.sch_Document?.autoLayout) {
+    throw new Error('current EDA does not support sch_Document.autoLayout');
+  }
+  const result = await api.sch_Document.autoLayout(params ?? {});
+  return { success: Boolean(result), result };
+}
+
 export async function runSchDrc(params: { strict?: boolean }): Promise<any> {
   const api = anyEda();
   if (!api?.sch_Drc?.check) {

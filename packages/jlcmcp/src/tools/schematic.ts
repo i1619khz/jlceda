@@ -16,6 +16,25 @@ export function registerSchematicTools(server: any, bridge: BridgeClient) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
   });
 
+  server.tool('sch_get_project_nets', '获取当前工程所有网络名称（原理图侧）', {}, async () => {
+    const data = await bridge.command('get_project_nets');
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('sch_auto_routing', '原理图自动连线（按网络自动连接器件引脚）', {
+    uuids: z.array(z.string()).optional().describe('指定器件 UUID 列表（可选，不填则全部）'),
+  }, async ({ uuids }: { uuids?: string[] }) => {
+    const data = await bridge.command('sch_auto_routing', { uuids });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
+  server.tool('sch_auto_layout', '原理图自动布局（自动排列器件位置）', {
+    uuids: z.array(z.string()).optional().describe('指定器件 UUID 列表（可选，不填则全部）'),
+  }, async ({ uuids }: { uuids?: string[] }) => {
+    const data = await bridge.command('sch_auto_layout', { uuids });
+    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  });
+
   server.tool('sch_run_drc', '运行原理图 DRC', {
     strict: z.boolean().optional().describe('是否严格模式'),
   }, async ({ strict }: { strict?: boolean }) => {
